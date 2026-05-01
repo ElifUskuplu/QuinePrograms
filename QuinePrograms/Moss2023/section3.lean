@@ -957,11 +957,11 @@ theorem isAddOf_summandsOf : ∀ (t : Tm Var), IsAddOf (summandsOf t) t := by
     exposes that index. The two helpers below convert between
     `RewN`, `Rewrite.toDerivable`, and `RewriteStar`. -/
 
-private def RewN : ℕ → Tm Var → Tm Var → Prop
+def RewN : ℕ → Tm Var → Tm Var → Prop
   | 0,     t, u => t = u
   | n + 1, t, u => ∃ v, Rewrite t v ∧ RewN n v u
 
-private theorem rewN_of_rewriteStar : ∀ {t u : Tm Var},
+theorem rewN_of_rewriteStar : ∀ {t u : Tm Var},
     RewriteStar t u → ∃ n, RewN n t u := by
   intro t u h
   induction h using Relation.ReflTransGen.head_induction_on with
@@ -970,12 +970,12 @@ private theorem rewN_of_rewriteStar : ∀ {t u : Tm Var},
       obtain ⟨n, hn⟩ := ih
       exact ⟨n + 1, _, step, hn⟩
 
-private theorem rewN_toEquiv : ∀ {n : ℕ} {t u : Tm Var}, RewN n t u → t ≡ u
+theorem rewN_toEquiv : ∀ {n : ℕ} {t u : Tm Var}, RewN n t u → t ≡ u
   | 0, _, _, h => h ▸ Equiv.refl _
   | _ + 1, _, _, ⟨_, hr, hn⟩ =>
       Equiv.trans (Rewrite.toDerivable hr) (rewN_toEquiv hn)
 
-private theorem rewN_to_rewriteStar : ∀ {n : ℕ} {t u : Tm Var},
+theorem rewN_to_rewriteStar : ∀ {n : ℕ} {t u : Tm Var},
     RewN n t u → RewriteStar t u
   | 0, _, _, h => h ▸ Relation.ReflTransGen.refl
   | _ + 1, _, _, ⟨_, hr, hn⟩ =>
@@ -1042,6 +1042,8 @@ private theorem isNF_left_add_e_of_rewN :
       cases hstep with
       | @step e he σ =>
           rcases he with rfl | rfl | rfl | rfl | rfl | rfl | rfl
+          -- The four `∘ₐ`-headed axioms are impossible: `w` has `+` at top.
+          all_goals try (exfalso; injection hw with hf _; cases hf; done)
           · -- **addE**: `u = σ 0`, `v = e`. From `RewN n (σ 0) e` and `u` NF,
             -- conclude `u = e` (and `v = e` via refl).
             injection hw with _ h_args
@@ -1084,42 +1086,37 @@ private theorem isNF_left_add_e_of_rewN :
               isNF_left_of_add_isNF hu
             obtain ⟨h_s0_eq, _⟩ := IH h_s0_nf hrest'
             exact absurd h_s0_eq (add_left_ne_e_of_isNF hu)
-          · exfalso; injection hw with hf _; cases hf
-          · exfalso; injection hw with hf _; cases hf
-          · exfalso; injection hw with hf _; cases hf
-          · exfalso; injection hw with hf _; cases hf
       | @congr f args i u' hr =>
-          cases f with
-          | d => exfalso; injection hw with hf _; cases hf
-          | e => exfalso; injection hw with hf _; cases hf
-          | app => exfalso; injection hw with hf _; cases hf
-          | add =>
-              injection hw with _ h_args
-              have hargs_eq : args = ![u, v] := by
-                funext j; fin_cases j
-                · exact (congrFun h_args 0).symm
-                · exact (congrFun h_args 1).symm
-              subst hargs_eq
-              fin_cases i
-              · -- i = 0: rewrite inside `u`. But `u` is NF , contradiction.
-                exfalso
-                have hr' : Rewrite u u' := by
-                  simpa using hr
-                exact hu u' hr'
-              · -- i = 1: rewrite inside `v`. New pair `(u, v')`. Apply IH.
-                have hr' : Rewrite v u' := by
-                  simpa using hr
-                have hrest' : RewN n (u + u') Tm.e := by
-                  have heq : (Term.func (S := S3) Sym.add
-                                (Function.update ![u, v]
-                                  ((fun i : Fin (S3.arity Sym.add) => i)
-                                    ⟨1, by decide⟩) u')) = u + u' := by
-                    change _ = Term.func (S := S3) Sym.add ![u, u']
-                    congr 1; funext j; fin_cases j <;> rfl
-                  rw [heq] at hrest; exact hrest
-                obtain ⟨hu_eq, hu'_star⟩ := IH hu hrest'
-                refine ⟨hu_eq, ?_⟩
-                exact Relation.ReflTransGen.head hr' hu'_star
+          cases f
+          -- `d`/`e`/`app` heads cannot equal `Sym.add`.
+          all_goals try (exfalso; injection hw with hf _; cases hf; done)
+          -- Only the `add` case remains.
+          injection hw with _ h_args
+          have hargs_eq : args = ![u, v] := by
+            funext j; fin_cases j
+            · exact (congrFun h_args 0).symm
+            · exact (congrFun h_args 1).symm
+          subst hargs_eq
+          fin_cases i
+          · -- i = 0: rewrite inside `u`. But `u` is NF , contradiction.
+            exfalso
+            have hr' : Rewrite u u' := by
+              simpa using hr
+            exact hu u' hr'
+          · -- i = 1: rewrite inside `v`. New pair `(u, v')`. Apply IH.
+            have hr' : Rewrite v u' := by
+              simpa using hr
+            have hrest' : RewN n (u + u') Tm.e := by
+              have heq : (Term.func (S := S3) Sym.add
+                            (Function.update ![u, v]
+                              ((fun i : Fin (S3.arity Sym.add) => i)
+                                ⟨1, by decide⟩) u')) = u + u' := by
+                change _ = Term.func (S := S3) Sym.add ![u, u']
+                congr 1; funext j; fin_cases j <;> rfl
+              rw [heq] at hrest; exact hrest
+            obtain ⟨hu_eq, hu'_star⟩ := IH hu hrest'
+            refine ⟨hu_eq, ?_⟩
+            exact Relation.ReflTransGen.head hr' hu'_star
 
 theorem add_equiv_e {a b : Tm Var} (h : (a + b) ≡ Tm.e) :
     (a ≡ Tm.e) ∧ (b ≡ Tm.e) := by
